@@ -17,7 +17,7 @@ import datetime
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # parameters
-training_epochs = 100
+training_epochs = 5000
 batch_size = 16
 learning_rate = 0.001
 
@@ -108,22 +108,24 @@ testsets = TensorData(test_x, test_y)
 testloader = DataLoader(testsets, batch_size=batch_size, shuffle=False, drop_last=False)
 
 
+##k-fold Training
+start = time.time()
+math.factorial(1234567)
+best_fold = 0
 best_loss = 0
 best_acc = 0
-
-##k-fold Training
+fold_val_loss = 0
+fold_loss_list = []
 for fold, (train_fold, val_fold) in enumerate(kfold.split(trainsets)):
-    print("Fold: {}".format(fold+1))
     train_data = torch.utils.data.Subset(trainsets, train_fold)
     trainloader = DataLoader(train_data, batch_size=batch_size, shuffle=False)
     
     val_data = torch.utils.data.Subset(trainsets, val_fold)
     validationloader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
     
-    start = time.time()
-    math.factorial(1234567)
     loss_list = []
     acc_list = []
+    epoch_val_loss = 0
     for epoch in (range(training_epochs)):
         loss_sum = 0
         loss_cost = 0
@@ -167,53 +169,63 @@ for fold, (train_fold, val_fold) in enumerate(kfold.split(trainsets)):
     #     acc_list.append(train_acc)
     #     print('Epoch: {} \tTraining Loss: {:.6f} \tTraining Accuracy: {:.2f}%'.format(epoch+1, train_loss, train_acc))
 
+
         #learning rate 출력
         visual_lr = optimizer.param_groups[0]['lr']
+
         val_loss /= len(validationloader)
         val_acc = 100. * val_correct / len(validationloader.dataset)
         loss_list.append(val_loss)
         acc_list.append(val_acc)
-        print('Epoch: {} \tValidation Loss: {:.6f} \tValidation Accuracy: {:.2f}% \tLearning rate: {:.10f}'
-              .format(epoch+1, val_loss, val_acc, visual_lr))
+        print('Fold: {} \tEpoch: {} \tValidation Loss: {:.6f} \tValidation Accuracy: {:.2f}% \tLearning rate: {:.10f}'
+              .format(fold+1,epoch+1, val_loss, val_acc, visual_lr))
+
 
         # 가장 loss가 적은 모델 저장
-        if epoch == 0 or val_loss < best_loss:
+        if (fold == 0 and epoch == 0) or val_loss < best_loss:
+            best_fold = fold
             best_epoch = epoch
             best_loss = val_loss
             best_acc = val_acc
             best_lr = visual_lr
             low_loss_model = copy.deepcopy(model.state_dict())
-            print('BEST \nEpoch: {} \tBest Loss: {:.6f} \tBest Accuracy: {:.2f}% \tLearning rate: {:.10f}'
-              .format(best_epoch+1, best_loss, best_acc, best_lr))
+            
+        scheduler.step(val_loss)
+            
+        epoch_val_loss += val_loss
+    #epoch마다 발생하는 loss 평균 구하기
+    epoch_val_loss /= training_epochs
+    fold_loss_list.append(epoch_val_loss)
 
-    #     scheduler.step()
+    ##fold당 loss가 가장 적은 거 출력
+    print('BEST \nFold: {} \tEpoch: {} \tBest Loss: {:.6f} \tBest Accuracy: {:.2f}% \tLearning rate: {:.10f}\n'
+            .format(fold+1, best_epoch+1, best_loss, best_acc, best_lr))
 
 
+    #그래프로 loss acc 출력
     epoch_list = np.arange(1,training_epochs+1)
-    show_mlp(epoch_list, loss_list, acc_list)
-
-    end = time.time()
-    sec = (end - start)
-    result_list = str(datetime.timedelta(seconds=sec)).split(".")
-    print(result_list[0])    
-
     show_mlp(epoch_list, loss_list, acc_list)
     plt.savefig('./corp_issure_rating_png/k{},feature{},eps{},batch{},lr{},hidden{}.png'
                 .format(fold+1,data_X.shape[1],training_epochs,batch_size,learning_rate,hiddensize),dpi=100)
 
-    ##loss가 가장 적은 거 출력
-    print('BEST \nEpoch: {} \tBest Loss: {:.6f} \tBest Accuracy: {:.2f}% \tLearning rate: {:.10f}'
-            .format(best_epoch+1, best_loss, best_acc, best_lr))
+    fold_val_loss += epoch_val_loss
+#fold당 발생하는 loss구하기
+fold_val_loss /= fold+1
 
-    best_list.append(str("BEST Choose: {}   Epoch: {}   Best Loss: {:.6f}   Best Accuracy: {:.2f}%   Learning rate: {:.10f}"
-            .format(fold+1, best_epoch+1, best_loss, best_acc, best_lr)))
+print("\nLoss Avg")
+for num,avg in enumerate(fold_loss_list):
+    print("Fold {} \tLoss {:.4f}".format(num+1,avg))
 
-    # torch.save(low_loss_model,'./corp_issure_rating_save/choose{},eps{},Acc{:.1f}.pth'.format(choose_num,training_epochs, acc))
-print(best_list)
+print("save model -> Fold {}, eopch{}, Loss{:.4f}".format(best_fold+1, best_epoch+1, best_loss))
+
+#학습하는 데 걸리는 시간 구하기
+end = time.time()
+sec = (end - start)
+result_list = str(datetime.timedelta(seconds=sec)).split(".")
+print(result_list[0])    
 
 
 ##Testing
-
 model.load_state_dict(low_loss_model)
 model.eval()
 
@@ -240,9 +252,10 @@ with torch.inference_mode():
     print(list_target)
     loss_avg = test_loss / len(testloader)
     acc = (test_correct/len(testloader.dataset))*100
+    print(f'Train \t\t\t Loss: {fold_val_loss:>8f}')
     print(f'Test Accuracy: {(acc):>0.1f}%     Loss: {loss_avg:>8f} \n')
-
-
+    
+torch.save(low_loss_model,'./corp_issure_rating_save/fold{},eps{},Acc{:.1f}.pth'.format(fold+1,training_epochs, acc))
 
 
 
