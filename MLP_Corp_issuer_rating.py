@@ -13,20 +13,24 @@ import math
 import time
 import datetime
 
+
+
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # parameters
 training_epochs = 10000
-batch_size = 16
+batch_size = 128
 learning_rate = 0.01
 
 class TensorData(Dataset):
     #전처리를 하는 부분
     def __init__(self, x_data, y_data):
         self.x_data = torch.FloatTensor(x_data)
-        self.y_data = torch.tensor(y_data).type(torch.int64)
-        self.y_data = F.one_hot(self.y_data)
-        self.y_data = self.y_data.type(torch.FloatTensor)
+        # self.y_data = torch.tensor(y_data).type(torch.int64)
+        # self.y_data = F.one_hot(self.y_data)
+        # self.y_data = self.y_data.type(torch.FloatTensor)
+        self.y_data = torch.FloatTensor(y_data)
         self.len = self.y_data.shape[0]
     #특정 1개의 샘플을 가져오는 부분
     def __getitem__(self, index):
@@ -39,9 +43,9 @@ class NeuralNet(torch.nn.Module):
     def __init__(self, input_size, hidden_size, output_size): #input: sample의 size  hidden: output의 size
         super(NeuralNet, self).__init__()
         self.input_layer  = torch.nn.Linear(input_size, 8)
-        self.hidden_layer1 = torch.nn.Linear(8, 16)
-        self.hidden_layer2 = torch.nn.Linear(16, 4)
-        self.output_layer = torch.nn.Linear(4, output_size)
+        self.hidden_layer1 = torch.nn.Linear(8, 32)
+        self.hidden_layer2 = torch.nn.Linear(32, 16)
+        self.output_layer = torch.nn.Linear(16, output_size)
         self.dropout = torch.nn.Dropout(0.2)
         self.relu = torch.nn.ReLU()
         self.soft = torch.nn.Softmax(dim=1)
@@ -79,12 +83,11 @@ optimizer = torch.optim.Adam(model.parameters(),lr=learning_rate)
 # factor: lr 감소시키는 비율 / patience: 얼마 동안 변화가 없을 때 lr을 감소시킬지 / threshold: Metric의 변화가 threhold이하일 시 변화가 없다고 판단
 # eps: lr의 감소 최소치 지정
 scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2,
-                                           threshold=0.0001, threshold_mode='rel', min_lr=0, eps=1e-6, verbose=False)
+                                           threshold=0.000001, threshold_mode='rel', min_lr=0, eps=1e-5, verbose=False)
 
 
 
 ##############추출할 test용 data뽑기### 
-choose_num = 3
 best_list = []
 
 #K-fold cross validation
@@ -93,24 +96,36 @@ for choose_num in range(4):
     ## 데이터 4등분을 하고 train test data 만들기 ###########################################
     import itertools
     data=pd.read_csv('D:/OneDrive - 대전대학교/jupyter/financial_data.csv',encoding='cp949')
+    data2=pd.read_csv('D:/OneDrive - 대전대학교/jupyter/gan.csv',encoding='cp949')
     data_X = data.iloc[:,1:9].values
+    data_X2 = data2.iloc[:,0:8]
+    
     #데이터 스케일링
-    scaler = StandardScaler()
+    scaler = MinMaxScaler()
     scaler.fit(data_X)
     X = scaler.transform(data_X)
     df = pd.DataFrame(X)
     a=df.iloc[:,[0,2,3,4,5,6,7]]
+    data_X2 = data_X2.iloc[:,[0,2,3,4,5,6,7]].values
     X = a.values.tolist()
+    X = X+data_X2.tolist()
 
     Y_t = data['Y'].replace(['AAA','AA','A','BBB','BB','B','CCC','CC','C','D'],
                             [0,0,0,0,1,1,1,1,1,1])
-    Y = Y_t.tolist()
+    # Y_t = data['Y'].replace(['AAA','AA','A','BBB','BB','B','CCC','CC','C','D'],
+    #                         [0,1,2,3,4,5,6,7,8,9])
+    y = data2['Y'].replace([0,1,2,3,4,5,6,7,8,9],
+                           [0,0,0,0,1,1,1,1,1,1])
+    Y_t=pd.concat([Y_t,y])
+    onehot_encoded = pd.get_dummies(Y_t)
+    
+    Y = onehot_encoded.values
 
     X_list = []
-    X_list.append(X[:230])
-    X_list.append(X[230:460])
-    X_list.append(X[460:690])
-    X_list.append(X[690:])
+    X_list.append(X[:732])
+    X_list.append(X[732:1464])
+    X_list.append(X[1464:2196])
+    X_list.append(X[2196:])
     test_x = X_list[choose_num]
     del X_list[choose_num]
     X_list=list(itertools.chain(*X_list))
@@ -118,15 +133,16 @@ for choose_num in range(4):
 
     #y data 4등분으로 나누기
     Y_list = []
-    Y_list.append(Y[:230])
-    Y_list.append(Y[230:460])
-    Y_list.append(Y[460:690])
-    Y_list.append(Y[690:])
-
+    Y_list.append(Y[:732])
+    Y_list.append(Y[732:1464])
+    Y_list.append(Y[1464:2196])
+    Y_list.append(Y[2196:])
     test_y = Y_list[choose_num]
     del Y_list[choose_num]
     train_y = list(itertools.chain(*Y_list))
-    train_x, val_x, train_y, val_y = train_test_split(train_x, train_y, test_size = 0.2, shuffle=True)
+    train_y = np.array(train_y)
+
+    train_x, val_x, train_y, val_y = train_test_split(train_x, train_y, test_size = 0.2, shuffle=False)
 
     ####################################################################################################################
     # data=pd.read_csv('D:/OneDrive - 대전대학교/jupyter/financial_data.csv',encoding='cp949')
@@ -184,6 +200,7 @@ for choose_num in range(4):
             #경사도 초기화
             optimizer.zero_grad()
             train_output=model(X)
+
             Loss = criterion(train_output, label)
             #Backpropagation
             Loss.backward()
@@ -205,21 +222,22 @@ for choose_num in range(4):
                 loss = criterion(val_output, targets)
                 val_loss += loss.item()
                 val_correct += (val_output.argmax(1) == targets.argmax(1)).sum().item()
-                
+
+        visual_lr = optimizer.param_groups[0]['lr']        
         train_loss = (loss_sum / len(trainloader))
         train_acc = (correct/len(trainloader.dataset))*100
         loss_list.append(train_loss)
         acc_list.append(train_acc)
-        # print('Epoch: {:4d}/{} \tTraining Loss: {:.6f} \tTraining Accuracy: {:.2f}%'.format(epoch+1, training_epochs, train_loss, train_acc))
+        print('Ch: {}   Epoch: {:4d}/{} \tTraining Loss: {:.6f} \tTraining Accuracy: {:.2f}% \tLearning rate: {:.10f}'
+              .format(choose_num+1, epoch+1, training_epochs, train_loss, train_acc, visual_lr))
 
         #learning rate 출력
-        visual_lr = optimizer.param_groups[0]['lr']
         val_loss /= len(validationloader)
         val_acc = 100. * val_correct / len(validationloader.dataset)
         # loss_list.append(val_loss)
         # acc_list.append(val_acc)
-        print('Ch: {}   Epoch: {:4d}/{} \tValidation Loss: {:.6f} \tValidation Accuracy: {:.2f}% \tLearning rate: {:.10f}'
-            .format(choose_num, epoch+1, training_epochs, val_loss, val_acc, visual_lr))
+        # print('Ch: {}   Epoch: {:4d}/{} \tValidation Loss: {:.6f} \tValidation Accuracy: {:.2f}% \tLearning rate: {:.10f}'
+        #     .format(choose_num+1, epoch+1, training_epochs, val_loss, val_acc, visual_lr))
         
         
         # 가장 loss가 적은 모델 저장
@@ -229,8 +247,8 @@ for choose_num in range(4):
             best_acc = val_acc
             best_lr = visual_lr
             low_loss_model = copy.deepcopy(model.state_dict())
-            print('BEST \nEpoch: {} \tBest Loss: {:.6f} \tBest Accuracy: {:.2f}% \tLearning rate: {:.10f}'
-            .format(best_epoch+1, best_loss, best_acc, best_lr))
+            # print('BEST \nEpoch: {} \tBest Loss: {:.6f} \tBest Accuracy: {:.2f}% \tLearning rate: {:.10f}'
+            # .format(best_epoch+1, best_loss, best_acc, best_lr))
         scheduler.step(val_loss)
         
 
@@ -275,16 +293,16 @@ for choose_num in range(4):
 
     show_mlp(epoch_list, loss_list, acc_list)
     plt.savefig('./corp_issure_rating_png/ch{},feature{},eps{},batch{},lr{},hidden{},Acc{:.1f}.png'
-                .format(choose_num,a.shape[1],training_epochs,batch_size,learning_rate,hiddensize,acc),dpi=100)
+                .format(choose_num+1,a.shape[1],training_epochs,batch_size,learning_rate,hiddensize,acc),dpi=100)
 
     ##loss가 가장 적은 거 출력
     print('BEST \nEpoch: {} \tBest Loss: {:.6f} \tBest Accuracy: {:.2f}% \tLearning rate: {:.10f}'
             .format(best_epoch+1, best_loss, best_acc, best_lr))
 
     best_list.append(str("BEST Choose: {}   Epoch: {}   Best Loss: {:.6f}   Best Accuracy: {:.2f}%   Learning rate: {:.10f}"
-            .format(choose_num, best_epoch+1, best_loss, best_acc, best_lr)))
+            .format(choose_num+1, best_epoch+1, best_loss, best_acc, best_lr)))
 
-    torch.save(low_loss_model,'./corp_issure_rating_save/choose{},eps{},Acc{:.1f}.pth'.format(choose_num,training_epochs, acc))
+    torch.save(low_loss_model,'./corp_issure_rating_save/choose{},eps{},Acc{:.1f}.pth'.format(choose_num+1,training_epochs, acc))
 
 print(best_list[0],"\n",best_list[1],"\n",best_list[2],"\n",best_list[3],"\n")
 

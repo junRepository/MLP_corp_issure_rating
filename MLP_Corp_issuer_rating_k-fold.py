@@ -17,9 +17,9 @@ import datetime
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # parameters
-training_epochs = 5000
-batch_size = 16
-learning_rate = 0.001
+training_epochs = 1000
+batch_size = 128
+learning_rate = 0.00001
 
 class TensorData(Dataset):
     #전처리를 하는 부분
@@ -57,10 +57,7 @@ class NeuralNet(torch.nn.Module):
     
 def show_mlp(epochs, loss, acc):
     plt.figure(figsize=(10,5))
-    plt.subplot(1,2,1)
-
-
-    
+    plt.subplot(1,2,1)  
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.plot(epochs, loss)
@@ -74,14 +71,14 @@ def show_mlp(epochs, loss, acc):
         
 
 hiddensize = 1
-kfold = KFold(n_splits=5)
+kfold = KFold(n_splits=4)
 model = NeuralNet(7,hiddensize,2).to(device)
 criterion = torch.nn.CrossEntropyLoss().to(device)
 optimizer = torch.optim.Adam(model.parameters(),lr=learning_rate)
 # factor: lr 감소시키는 비율 / patience: 얼마 동안 변화가 없을 때 lr을 감소시킬지 / threshold: Metric의 변화가 threhold이하일 시 변화가 없다고 판단
 # eps: lr의 감소 최소치 지정
 scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=100,
-                                           threshold=0.0001, threshold_mode='rel', min_lr=0, eps=1e-6, verbose=False)
+                                           threshold=0.0001, threshold_mode='rel', min_lr=0, eps=1e-7, verbose=False)
 
 
 
@@ -177,8 +174,8 @@ for fold, (train_fold, val_fold) in enumerate(kfold.split(trainsets)):
         val_acc = 100. * val_correct / len(validationloader.dataset)
         loss_list.append(val_loss)
         acc_list.append(val_acc)
-        print('Fold: {} \tEpoch: {} \tValidation Loss: {:.6f} \tValidation Accuracy: {:.2f}% \tLearning rate: {:.10f}'
-              .format(fold+1,epoch+1, val_loss, val_acc, visual_lr))
+        print('Fold: {} \tEpoch: {}/{} \tValidation Loss: {:.6f} \tValidation Accuracy: {:.2f}% \tLearning rate: {:.10f}'
+              .format(fold+1,epoch+1,training_epochs,val_loss, val_acc, visual_lr))
 
 
         # 가장 loss가 적은 모델 저장
@@ -189,7 +186,7 @@ for fold, (train_fold, val_fold) in enumerate(kfold.split(trainsets)):
             best_acc = val_acc
             best_lr = visual_lr
             low_loss_model = copy.deepcopy(model.state_dict())
-            
+
         scheduler.step(val_loss)
             
         epoch_val_loss += val_loss
