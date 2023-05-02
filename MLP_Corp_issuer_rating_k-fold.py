@@ -66,7 +66,7 @@ def show_mlp(epochs, loss, acc):
     plt.ylabel('Accuracy')
     plt.plot(epochs, acc)
     plt.title('Validation Acc')
-    plt.show()
+    # plt.show()
         
 
 hiddensize = 1
@@ -76,8 +76,8 @@ criterion = torch.nn.CrossEntropyLoss().to(device)
 optimizer = torch.optim.Adam(model.parameters(),lr=learning_rate)
 # factor: lr 감소시키는 비율 / patience: 얼마 동안 변화가 없을 때 lr을 감소시킬지 / threshold: Metric의 변화가 threhold이하일 시 변화가 없다고 판단
 # eps: lr의 감소 최소치 지정
-scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=100,
-                                           threshold=0.0001, threshold_mode='rel', min_lr=0, eps=1e-7, verbose=False)
+scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10,
+                                           threshold=0.00001, threshold_mode='rel', min_lr=0, eps=1e-6, verbose=False)
 
 
 best_list = []
@@ -193,12 +193,21 @@ for fold, (train_fold, val_fold) in enumerate(kfold.split(trainsets)):
             low_loss_model = copy.deepcopy(model.state_dict())
             print('BEST \nEpoch: {} \tBest Loss: {:.6f} \tBest Accuracy: {:.2f}% \tLearning rate: {:.10f}'
               .format(best_epoch+1, best_loss, best_acc, best_lr))
-
+            
         scheduler.step(val_loss)
 
 
     epoch_list = np.arange(1,training_epochs+1)
     show_mlp(epoch_list, loss_list, acc_list)
+    plt.savefig('./corp_issure_rating_png/fold{},feature{},eps{},batch{},lr{},hidden{},Acc{:.1f}.png'
+                .format(fold+1,data_X.shape[1],training_epochs,batch_size,learning_rate,hiddensize,best_acc),dpi=100)
+
+    ##loss가 가장 적은 거 출력
+    print('BEST \nEpoch: {} \tBest Loss: {:.6f} \tBest Accuracy: {:.2f}% \tLearning rate: {:.10f}'
+            .format(best_epoch+1, best_loss, best_acc, best_lr))
+
+    best_list.append(str("BEST fold: {}   Epoch: {}   Best Loss: {:.6f}   Best Accuracy: {:.2f}%   Learning rate: {:.10f}"
+            .format(fold+1, best_epoch+1, best_loss, best_acc, best_lr)))
 
 
 ##Testing
