@@ -17,7 +17,7 @@ import datetime
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # parameters
-training_epochs = 100000
+training_epochs = 1000
 batch_size = 64
 learning_rate = 0.001
 
@@ -59,13 +59,13 @@ def show_mlp(epochs, loss, acc):
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.plot(epochs, loss)
-    plt.title('Training Loss')
+    plt.title('Validation Loss')
     
     plt.subplot(1,2,2)
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
     plt.plot(epochs, acc)
-    plt.title('Training Acc')
+    plt.title('Validation Acc')
     plt.show()
         
 
@@ -128,8 +128,6 @@ for fold, (train_fold, val_fold) in enumerate(kfold.split(trainsets)):
     val_data = torch.utils.data.Subset(trainsets, val_fold)
     validationloader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
     
-    start = time.time()
-    math.factorial(1234567)
     loss_list = []
     acc_list = []
     best_loss = 0
@@ -196,7 +194,7 @@ for fold, (train_fold, val_fold) in enumerate(kfold.split(trainsets)):
             print('BEST \nEpoch: {} \tBest Loss: {:.6f} \tBest Accuracy: {:.2f}% \tLearning rate: {:.10f}'
               .format(best_epoch+1, best_loss, best_acc, best_lr))
 
-    #     scheduler.step()
+        scheduler.step(val_loss)
 
 
     epoch_list = np.arange(1,training_epochs+1)
